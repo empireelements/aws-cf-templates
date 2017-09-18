@@ -16,8 +16,10 @@ Resources:
   EndpointS3:
     Type: 'AWS::EC2::VPCEndpoint'
     Properties:
-      RouteTableIds:
-      - 'Fn::ImportValue': !Sub '${ParentVPCStack}-RouteTablePrivate'
+      RouteTableIds: !Split
+      - ','
+      - 'Fn::ImportValue':
+          !Sub '${ParentVPCStack}-RouteTablesPrivate'
       ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
       VpcId:
         'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
@@ -25,6 +27,9 @@ Outputs:
   TemplateID:
     Description: 'cloudonaut.io template id'
     Value: 'vpc/vpc-endpoint-s3'
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
   Endpoint:
     Description: 'The VPC endpoint to S3.'
     Value: !Ref EndpointS3

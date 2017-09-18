@@ -18,15 +18,19 @@ Parameters:
   Email:
     Description: 'Optional email address that will receive alerts'
     Type: String
+    Default: ''
   HttpEndpoint:
     Description: 'Optional HTTP endpoint that will receive alerts via POST requests'
     Type: String
+    Default: ''
   HttpsEndpoint:
     Description: 'Optional HTTPS endpoint that will receive alerts via POST requests  (can be marbot.io)'
     Type: String
+    Default: ''
   FallbackEmail:
     Description: 'Optional email address that will receive alerts if alerts can not be delivered'
     Type: String
+    Default: ''
 Conditions:
   HasEmail: !Not [!Equals [!Ref Email, '']]
   HasHttpEndpoint: !Not [!Equals [!Ref HttpEndpoint, '']]
@@ -36,6 +40,24 @@ Resources:
   Topic:
     Type: 'AWS::SNS::Topic'
     Properties: {}
+  TopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Id: Id1
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Sid1
+          Effect: Allow
+          Principal:
+            Service:
+            - 'events.amazonaws.com' # Allow CloudWatch Events
+            - 'budgets.amazonaws.com' # Allow Budget Notifications
+            - 'rds.amazonaws.com' # Allow RDS Events
+          Action: 'sns:Publish'
+          Resource: !Ref Topic
+      Topics:
+      - !Ref Topic
   FallbackTopic:
     Type: 'AWS::SNS::Topic'
     Properties: {}
@@ -87,6 +109,9 @@ Outputs:
   TemplateID:
     Description: 'cloudonaut.io template id'
     Value: 'operations/alert'
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
   TopicARN:
     Description: 'The ARN of the alert topic.'
     Value: !Ref Topic

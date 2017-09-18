@@ -1,3 +1,5 @@
+<iframe src="https://ghbtns.com/github-btn.html?user=widdix&repo=aws-cf-templates&type=star&count=true&size=large" frameborder="0" scrolling="0" width="160px" height="30px"></iframe>
+
 A VPC is a virtual network inside AWS where you can isolate your setup using private IP addresses. A VPC consists of several subnets. Each subnet is bound to an Availability Zone. A **public** subnet has a direct route to the Internet. As long as your EC2 instances have an public IP they can communicate (in and out) with the Internet. A **private** subnet does not have a route to the Internet. Instances in private subnets can not be accessed from the public Internet. If you want to access the Internet from a private subnet you need to create a NAT gateway/instance. You can deploy a bastion host/instance to reduce the attack surface of internal applications.
 
 # VPC with private and public subnets in two Availability Zones
@@ -47,7 +49,9 @@ This template describes a VPC with four private and four public subnets.
 If you have an existing VPC you can wrap it into our required form using a legacy VPC wrapper: [![Launch Stack](./img/launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=vpc-4azs&templateURL=https://s3-eu-west-1.amazonaws.com/widdix-aws-cf-templates-releases-eu-west-1/__VERSION__/vpc/vpc-4azs-legacy.yaml) 
 
 # NAT Gateway
-This template describes a NAT Gateway that forwards HTTP, HTTPS and NTP traffic from private subnets to the Internet.
+This template describes a NAT Gateway that forwards HTTP, HTTPS and NTP traffic from a single private subnet to the Internet. You need one stack per availability zone. Example: If you use the `vpc-2azs.yaml` template, you will need two Nat Gateway stack in `A` and `B`.
+
+> You need one Gateway in each `SubnetZone` (e.g. `A` and `B` in `vpc-2azs.yaml`).
 
 ![Architecture](./img/vpc-nat-gateway.png)
 
@@ -64,11 +68,10 @@ This template describes a NAT Gateway that forwards HTTP, HTTPS and NTP traffic 
 ## Dependencies
 * `vpc/vpc-*azs.yaml` (**required**)
 
-## Limitations
-* The NAT Gateway is a single point of failure because it runs only in one Subnet (and therefore in one Availability Zone): https://github.com/widdix/aws-cf-templates/issues/65
-
 # NAT instance
-This template describes a **highly available** Network Address Translation (NAT) instance that forwards HTTP, HTTPS and NTP traffic from private subnets to the Internet.
+This template describes a **highly available** Network Address Translation (NAT) instance that forwards HTTP, HTTPS and NTP traffic from a single private subnet to the Internet. You need one stack per availability zone. Example: If you use the `vpc-2azs.yaml` template, you will need two Nat Gateway stack in `A` and `B`.
+
+> You need one Instance in each `SubnetZone` (e.g. `A` and `B` in `vpc-2azs.yaml`).
 
 ![Architecture](./img/vpc-nat-instance.png)
 ## Installation Guide
@@ -86,9 +89,6 @@ This template describes a **highly available** Network Address Translation (NAT)
 * `vpc/vpc-*azs.yaml` (**required**)
 * `vpc/vpc-ssh-bastion.yaml` (recommended)
 * `operations/alert.yaml` (recommended)
-
-## Limitations
-* Only one EC2 instance is managed by the ASG. In case of an outage the instance will be replaced within 5 minutes.
 
 # SSH bastion host/instance
 This template describes a **highly available** SSH bastion host/instance. SSH Port 22 is open to the world. You can enable the default ec2-user access protected by the referenced EC2 KeyPair. You can also enable personalized SSH access by using the IAM users and their configured public keys. Use `ssh -A user@ip` to enable forwarding of the authentication agent connection when connection to the bastion host.
@@ -130,6 +130,24 @@ This template describes a VPC endpoint to securely route traffic within a VPC fo
 
 ## Dependencies
 * `vpc/vpc-*azs.yaml` (**required**)
+
+# VPC Endpoint to DynamoDB
+This template describes a VPC endpoint to securely route traffic within a VPC for private instances to access DynamoDB without the need of a NAT Gateway, NAT instance, or public internet. Refer to [AWS VPC endpoint](http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/vpc-endpoints.html) documentation if this is necessary for your stack. By default, access to all DynamoDB actions and tables is allowed, but may be constrained with a policy document.
+
+## Installation Guide
+1. This templates depends on one of our `vpc-*azs.yaml` templates. [![Launch Stack](./img/launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=vpc-2azs&templateURL=https://s3-eu-west-1.amazonaws.com/widdix-aws-cf-templates-releases-eu-west-1/__VERSION__/vpc/vpc-2azs.yaml)
+1. [![Launch Stack](./img/launch-stack.png)](https://console.aws.amazon.com/cloudformation/home#/stacks/new?stackName=vpc-endpoint-dynamodb&templateURL=https://s3-eu-west-1.amazonaws.com/widdix-aws-cf-templates-releases-eu-west-1/__VERSION__/vpc/vpc-endpoint-dynamodb.yaml)
+1. Click **Next** to proceed with the next step of the wizard.
+1. Specify a name and all parameters for the stack.
+1. Click **Next** to proceed with the next step of the wizard.
+1. Click **Next** to skip the **Options** step of the wizard.
+1. Check the **I acknowledge that this template might cause AWS CloudFormation to create IAM resources.** checkbox.
+1. Click **Create** to start the creation of the stack.
+1. Wait until the stack reaches the state **CREATE_COMPLETE**
+
+## Dependencies
+* `vpc/vpc-*azs.yaml` (**required**)
+
 
 # VPC Flow Logs to CloudWatch Logs
 This template enables [Flow Logs](http://docs.aws.amazon.com/AmazonVPC/latest/UserGuide/flow-logs.html) for the specified VPC. Flow Logs contain aggregated network traffic data in your VPC.
