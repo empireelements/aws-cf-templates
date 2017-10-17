@@ -9,6 +9,7 @@ Metadata:
       Parameters:
       - ParentClusterStack
       - ParentAlertStack
+      - ParentZoneStack
     - Label:
         default: 'Load Balancer Parameters'
       Parameters:
@@ -16,6 +17,11 @@ Metadata:
       - LoadBalancerHostPattern
       - LoadBalancerPath
       - LoadBalancerHttps
+      - LoadBalancerDeregistrationDelay
+    - Label:
+        default: 'Service Parameters'
+      Parameters:
+      - SubDomainName
     - Label:
         default: 'Task Parameters'
       Parameters:
@@ -29,6 +35,10 @@ Parameters:
     Type: String
   ParentAlertStack:
     Description: 'Optional but recommended stack name of parent alert stack based on operations/alert.yaml template.'
+    Type: String
+    Default: ''
+  ParentZoneStack:
+    Description: 'Optional stack name of parent zone stack based on vpc/zone-*.yaml template.'
     Type: String
     Default: ''
   LoadBalancerPriority:
@@ -57,6 +67,13 @@ Parameters:
     AllowedValues:
     - true
     - false
+  LoadBalancerDeregistrationDelay:
+    Description: 'The amount time (in seconds) to wait before changing the state of a deregistering target from draining to unused.'
+    Type: Number
+    Default: 300
+    ConstraintDescription: 'Must be in the range [0-3600]'
+    MinValue: 0
+    MaxValue: 3600
   Image:
     Description: 'The image to use for a container, which is passed directly to the Docker daemon. You can use images in the Docker Hub registry or specify other repositories (repository-url/image:tag).'
     Type: String
@@ -78,16 +95,21 @@ Parameters:
     Default: 2
     ConstraintDescription: 'Must be >= 1'
     MinValue: 1
+  SubDomainName:
+    Description: 'Name that is used to create the DNS entry ${SubDomainName}.${HostedZoneName} (works only when ParentZoneStack is set)'
+    Type: String
+    Default: ''
 Mappings: {}
 Conditions:
   HasLoadBalancerHttps: !Equals [!Ref LoadBalancerHttps, 'true']
   HasLoadBalancerPath: !Not [!Equals [!Ref LoadBalancerPath, '']]
   HasLoadBalancerHostPattern: !Not [!Equals [!Ref LoadBalancerHostPattern, '']]
   HasAlertTopic: !Not [!Equals [!Ref ParentAlertStack, '']]
+  HasZone: !Not [!Equals [!Ref ParentZoneStack, '']]
 Resources:
   TaskDefinition:
     Type: 'AWS::ECS::TaskDefinition'
-    Properties: 
+    Properties:
       Family: !Ref 'AWS::StackName'
       NetworkMode: bridge
       ContainerDefinitions:
@@ -105,6 +127,23 @@ Resources:
             'awslogs-group':
               'Fn::ImportValue': !Sub '${ParentClusterStack}-LogGroup'
             'awslogs-stream-prefix': !Ref 'AWS::StackName'
+  RecordSet:
+    Condition: HasZone
+    Type: 'AWS::Route53::RecordSet'
+    Properties:
+      AliasTarget:
+        HostedZoneId:
+          'Fn::ImportValue': !Sub '${ParentClusterStack}-CanonicalHostedZoneID'
+        DNSName:
+          'Fn::ImportValue': !Sub '${ParentClusterStack}-DNSName'
+      HostedZoneId:
+        'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneId'
+      Name: !Sub
+      - '${SubDomainName}.${HostedZoneName}'
+      - SubDomainName: !Ref SubDomainName
+        HostedZoneName:
+          'Fn::ImportValue': !Sub '${ParentZoneStack}-HostedZoneName'
+      Type: A
   LoadBalancerTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
     Properties:
@@ -120,6 +159,9 @@ Resources:
       UnhealthyThresholdCount: 4
       VpcId:
         'Fn::ImportValue': !Sub '${ParentClusterStack}-VPC'
+      TargetGroupAttributes:
+      - Key: deregistration_delay.timeout_seconds
+        Value: !Ref LoadBalancerDeregistrationDelay
   LoadBalancerHttpListenerRule:
     Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
     Properties:
@@ -252,7 +294,7 @@ Resources:
       PolicyName: !Sub '${AWS::StackName}-scale-up'
       PolicyType: StepScaling
       ScalingTargetId: !Ref ScalableTarget
-      StepScalingPolicyConfiguration: 
+      StepScalingPolicyConfiguration:
         AdjustmentType: PercentChangeInCapacity
         Cooldown: 300
         MinAdjustmentMagnitude: 1
@@ -265,12 +307,12 @@ Resources:
       PolicyName: !Sub '${AWS::StackName}-scale-down'
       PolicyType: StepScaling
       ScalingTargetId: !Ref ScalableTarget
-      StepScalingPolicyConfiguration: 
+      StepScalingPolicyConfiguration:
         AdjustmentType: PercentChangeInCapacity
         Cooldown: 300
         MinAdjustmentMagnitude: 1
         StepAdjustments:
-        - MetricIntervalLowerBound: 0
+        - MetricIntervalUpperBound: 0
           ScalingAdjustment: -25
   CPUUtilizationTooHighAlarm:
     Condition: HasAlertTopic
@@ -334,6 +376,9 @@ Outputs:
   TemplateID:
     Description: 'cloudonaut.io template id'
     Value: 'ecs/service-cluster-alb'
+  StackName:
+    Description: 'Stack name'
+    Value: !Sub '${AWS::StackName}'
   DNSName:
     Description: 'The DNS name for the ECS cluster/service load balancer.'
     Value:
@@ -344,7 +389,7 @@ Outputs:
     Description: 'URL to the ECS service.' # TODO does not work with LoadBalancerHostPattern
     Value: !Sub
     - '${ClusterURL}/${LoadBalancerPath}/'
-    - ClusterURL: 
+    - ClusterURL:
         'Fn::ImportValue': !Sub '${ParentClusterStack}-URL'
       LoadBalancerPath: !Ref LoadBalancerPath
     Export:
